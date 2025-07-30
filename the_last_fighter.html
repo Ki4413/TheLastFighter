@@ -36,6 +36,7 @@
 <body>
     <div class="title">The Last Fighter</div>
     <div class="info">
+        面: <span id="level">1</span> | 
         ステージ: <span id="stage">1</span> | 
         スコア: <span id="score">0</span> | 
         ハイスコア: <span id="highscore">0</span>
@@ -51,6 +52,7 @@
         
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const levelEl = document.getElementById('level');
         const stageEl = document.getElementById('stage');
         const scoreEl = document.getElementById('score');
         const highscoreEl = document.getElementById('highscore');
@@ -60,7 +62,8 @@
         let animationId = null;
         let score = 0;
         let highScore = 0;
-        let currentStage = 1;
+        let currentLevel = 1; // 面数（1面、2面、3面...）
+        let currentStage = 1; // ステージ（1:宇宙、2:地上、3:ボス）
         let stageProgress = 0; // ステージ進行度（旧roundProgress）
         let keys = {};
         let keyPressed = {}; // キーが押された瞬間を検出するため
@@ -92,6 +95,32 @@
             1: { type: 'space', length: 2000, hasGround: false, enemyTypes: ['kamikaze'], name: '宇宙空間' },
             2: { type: 'planet', length: 2500, hasGround: true, enemyTypes: ['basic', 'fast'], name: '地上' },
             3: { type: 'boss', length: 1000, hasGround: false, boss: 'stage1boss', name: 'ボス戦' }
+        };
+
+        // 面ごとの敵タイプ設定
+        const levelEnemyConfig = {
+            1: {
+                1: ['kamikaze'],
+                2: ['basic', 'fast'],
+                3: 'stage1boss'
+            },
+            2: {
+                1: ['kamikaze', 'fast'],
+                2: ['basic', 'fast', 'heavy'],
+                3: 'stage2boss'
+            },
+            3: {
+                1: ['kamikaze', 'fast', 'spinner'],
+                2: ['basic', 'fast', 'heavy', 'spinner'],
+                3: 'stage1boss' // 3面以降はボスをローテーション
+            }
+        };
+
+        // 面ごとのスクロール速度設定
+        const levelSpeedConfig = {
+            1: 2,
+            2: 2.5,
+            3: 3
         };
 
         // 敵の種類
@@ -130,10 +159,28 @@
             }
         };
 
+        // 現在の面とステージに応じた設定を取得
+        function getCurrentStageConfig() {
+            const baseConfig = stageConfig[currentStage];
+            const levelConfig = levelEnemyConfig[Math.min(currentLevel, 3)];
+            
+            let config = { ...baseConfig };
+            
+            if (currentStage === 3) {
+                // ボスステージの場合
+                config.boss = levelConfig[3];
+            } else {
+                // 通常ステージの場合
+                config.enemyTypes = levelConfig[currentStage];
+            }
+            
+            return config;
+        }
+
         // 地上敵を生成
         function generateGroundEnemies() {
             groundEnemies = [];
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             if (!currentStageConfig.hasGround) return;
             
             // ステージの長さに応じて地上敵を配置
@@ -168,7 +215,7 @@
         // 地形生成（画面下1/4以下に調整）
         function generateTerrain() {
             terrain = [];
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             if (!currentStageConfig.hasGround) return;
             
             const terrainWidth = canvas.width * 4;
@@ -244,7 +291,7 @@
 
         // 地形の高さを取得
         function getGroundHeight(worldX) {
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             if (!currentStageConfig.hasGround || terrain.length === 0) {
                 return canvas.height + 100; // 地面がない場合は画面外
             }
@@ -759,14 +806,15 @@
             }
             
             // 地面との衝突チェック
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             if (currentStageConfig.hasGround) {
                 // プレイヤーのワールド座標を計算
                 const playerWorldX = player.x + scrollOffset;
                 const groundY = getGroundHeight(playerWorldX);
                 
-                // 正確な衝突判定（余裕なし）
-                if (player.y + player.height >= groundY) {
+                // 衝突判定（少し余裕を持たせる）
+                const collisionMargin = 5; // 5ピクセルの余裕
+                if (player.y + player.height >= groundY - collisionMargin) {
                     triggerGameOver();
                 }
             }
@@ -775,7 +823,7 @@
         function spawnEnemies() {
             if (!gameRunning || gameOver) return;
             
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             
             // ボスステージの場合
             if (currentStageConfig.type === 'boss' && !boss) {
@@ -828,7 +876,7 @@
         function updateBullets() {
             if (!gameRunning || gameOver) return;
             
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             
             // プレイヤーの弾丸
             for (let i = bullets.length - 1; i >= 0; i--) {
@@ -925,12 +973,12 @@
             stageProgress += scrollSpeed;
             
             // ステージ進行チェック
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             
             // デバッグ情報（5秒ごとに表示）
             if (Math.floor(stageProgress / 100) % 5 === 0 && stageProgress % 100 < scrollSpeed) {
                 console.log("=== STAGE PROGRESS ===");
-                console.log("Stage:", currentStage);
+                console.log("Level:", currentLevel, "Stage:", currentStage);
                 console.log("Progress:", Math.floor(stageProgress), "/", currentStageConfig.length);
                 console.log("Percentage:", Math.floor((stageProgress / currentStageConfig.length) * 100) + "%");
                 console.log("scrollSpeed:", scrollSpeed, "scrollOffset:", scrollOffset);
@@ -962,22 +1010,32 @@
 
         function nextStage() {
             console.log("=== nextStage START ===");
-            console.log("BEFORE - Stage:", currentStage, "stageProgress:", stageProgress, "scrollOffset:", scrollOffset);
+            console.log("BEFORE - Level:", currentLevel, "Stage:", currentStage, "stageProgress:", stageProgress, "scrollOffset:", scrollOffset);
             
-            // 次のステージを決定（1面のみ）
+            const previousStageConfig = getCurrentStageConfig();
+            
+            // 次のステージを決定
             if (currentStage < 3) {
+                // 同じ面内で次のステージへ
                 currentStage++;
             } else {
-                // ボス撃破後はゲームオーバー
-                console.log("Boss defeated! Game Over!");
-                gameOver = true;
-                gameRunning = false;
-                return;
+                // ボス撃破後は次の面へ
+                currentLevel++;
+                currentStage = 1; // ステージを1に戻す
+                
+                // スクロール速度を面に応じて調整
+                const newSpeed = levelSpeedConfig[Math.min(currentLevel, 3)] || 3;
+                scrollSpeed = newSpeed;
+                baseScrollSpeed = newSpeed;
+                
+                console.log("Level up! New level:", currentLevel, "New scroll speed:", scrollSpeed);
             }
             
-            console.log("AFTER stage change - Stage:", currentStage);
+            const newStageConfig = getCurrentStageConfig();
             
-            // ステージ進行を確実にリセット
+            console.log("AFTER stage change - Level:", currentLevel, "Stage:", currentStage);
+            
+            // ステージ進行を確実にリセット（複数回実行して確実にする）
             stageProgress = 0;
             scrollOffset = 0;
             console.log("stageProgress and scrollOffset reset to 0");
@@ -985,7 +1043,10 @@
             // 敵をクリア
             enemies = [];
             groundEnemies = [];
-            if (stageConfig[currentStage].type !== 'boss') {
+            enemyBullets = [];
+            bullets = [];
+            particles = [];
+            if (newStageConfig.type !== 'boss') {
                 boss = null;
             }
             
@@ -993,11 +1054,26 @@
             generateTerrain();
             generateGroundEnemies();
             generateStars();
+            
+            // プレイヤー位置の調整：地面がないステージから地面があるステージに切り替わる場合
+            if (!previousStageConfig.hasGround && newStageConfig.hasGround) {
+                // プレイヤーが下の方にいる場合、安全な高さに移動
+                const safeY = canvas.height * 0.4; // 画面の上から40%の位置
+                if (player.y > safeY) {
+                    player.y = safeY;
+                    console.log("Player position adjusted to safe height:", player.y);
+                }
+            }
+            
             updateUI();
             
+            // 再度確実にリセット
+            stageProgress = 0;
+            scrollOffset = 0;
+            
             console.log("=== nextStage END ===");
-            console.log("Final state - Stage:", currentStage, "stageProgress:", stageProgress, "scrollOffset:", scrollOffset);
-            console.log("Stage config length:", stageConfig[currentStage].length);
+            console.log("Final state - Level:", currentLevel, "Stage:", currentStage, "stageProgress:", stageProgress, "scrollOffset:", scrollOffset);
+            console.log("Stage config length:", getCurrentStageConfig().length);
         }
 
         function nextRound() {
@@ -1081,9 +1157,8 @@
                             boss = null;
                             updateUI();
                             
-                            // ボス撃破後、直接ゲームオーバー
-                            gameOver = true;
-                            gameRunning = false;
+                            // ボス撃破後、即座に次のステージへ進む
+                            nextStage();
                         }
                         break;
                     }
@@ -1163,13 +1238,14 @@
         }
 
         function updateUI() {
+            levelEl.textContent = currentLevel;
             stageEl.textContent = currentStage;
             scoreEl.textContent = score;
             highscoreEl.textContent = highScore;
         }
 
         function drawBackground() {
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             
             // 背景色をステージタイプに応じて変更
             let bgColor1, bgColor2;
@@ -1207,7 +1283,7 @@
         }
 
         function drawTerrain() {
-            const currentStageConfig = stageConfig[currentStage];
+            const currentStageConfig = getCurrentStageConfig();
             if (!currentStageConfig.hasGround || terrain.length === 0) return;
 
             // 地形色をステージタイプに応じて変更
@@ -1478,6 +1554,7 @@
             particles = [];
             boss = null;
             score = 0;
+            currentLevel = 1;
             currentStage = 1;
             stageProgress = 0;
             scrollOffset = 0;
@@ -1489,7 +1566,7 @@
             gameRunning = false;
             gameOver = false;
             
-            console.log("After reset - Stage:", currentStage, "stageProgress:", stageProgress);
+            console.log("After reset - Level:", currentLevel, "Stage:", currentStage, "stageProgress:", stageProgress);
             
             clearKeyBuffer();
             generateTerrain();
@@ -1497,8 +1574,8 @@
             generateStars();
             updateUI();
             
-            console.log("ゲーム開始 - ステージ:" + currentStage);
-            console.log("Stage config length:", stageConfig[currentStage].length);
+            console.log("ゲーム開始 - 面:" + currentLevel + " ステージ:" + currentStage);
+            console.log("Stage config length:", getCurrentStageConfig().length);
             
             gameRunning = true;
             gameLoop();
@@ -1525,6 +1602,7 @@
             particles = [];
             boss = null;
             score = 0;
+            currentLevel = 1;
             currentStage = 1;
             stageProgress = 0;
             scrollOffset = 0;
